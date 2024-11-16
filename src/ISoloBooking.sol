@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import "./ITribalTypes.sol";
+import "./ITribalToken.sol";
 
 interface ISoloBooking {
     enum HomeStatus { Available, Unavailable, Booked }
@@ -29,7 +29,7 @@ interface ISoloBooking {
     function _calculateTotalAmount(
         uint256 startDate,
         uint256 endDate,
-        ITribalTypes.PaymentType paymentType,
+        ITribalToken.PaymentType paymentType,
         HomeListing memory listing
     ) external pure returns (uint256);
     function _updateAvailability(

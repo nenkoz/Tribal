@@ -5,7 +5,9 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./ITribalTypes.sol";
+import "./ITribalToken.sol";
+import "forge-std/console.sol";
+
 
 contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
     // Custom errors
@@ -87,42 +89,46 @@ contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
 
     // Add new transfer function for any token
     function transferTokens(
+        address from,
         address to,
         uint256 amount,
-        ITribalTypes.PaymentType paymentType
+        ITribalToken.PaymentType paymentType
     ) public virtual returns (bool) {
-        User memory sender = users[msg.sender];
+        User memory sender = users[from];
         User memory recipient = users[to];
         uint256 currentTime = block.timestamp;
 
         // Verify users
+        console.log("Sender address:", from);
+        console.log("Recipient address:", to);
+        console.log("Transfer amount:", amount);
         if (!sender.verified) {
-            emit TokenTransferFailed(msg.sender, to, amount, TransferFailureReason.NOT_VERIFIED_SENDER);
+            emit TokenTransferFailed(from, to, amount, TransferFailureReason.NOT_VERIFIED_SENDER);
             revert UserNotVerified();
         }
         if (!recipient.verified) {
-            emit TokenTransferFailed(msg.sender, to, amount, TransferFailureReason.NOT_VERIFIED_RECIPIENT);
+            emit TokenTransferFailed(from, to, amount, TransferFailureReason.NOT_VERIFIED_RECIPIENT);
             revert UserNotVerified();
         }
 
         // Check membership expiry
         if (sender.expiryTimestamp <= currentTime) {
-            emit TokenTransferFailed(msg.sender, to, amount, TransferFailureReason.EXPIRED_SENDER);
-            revert MembershipExpired(msg.sender);
+            emit TokenTransferFailed(from, to, amount, TransferFailureReason.EXPIRED_SENDER);
+            revert MembershipExpired(from);
         }
         if (recipient.expiryTimestamp <= currentTime) {
-            emit TokenTransferFailed(msg.sender, to, amount, TransferFailureReason.EXPIRED_RECIPIENT);
+            emit TokenTransferFailed(from, to, amount, TransferFailureReason.EXPIRED_RECIPIENT);
             revert MembershipExpired(to);
         }
 
         bool success;
-        if (paymentType == ITribalTypes.PaymentType.Tribal) {
-            success = super.transfer(to, amount);
+        if (paymentType == ITribalToken.PaymentType.Tribal) {
+            success = super.transferFrom(from, to, amount);
         } else {
-            success = IERC20(usdcAddress).transferFrom(msg.sender, to, amount);
+            success = IERC20(usdcAddress).transferFrom(from, to, amount);
         }
 
-        emit TokenTransferAttempted(msg.sender, to, amount, success);
+        emit TokenTransferAttempted(from, to, amount, success);
         return success;
     }
 
@@ -133,7 +139,7 @@ contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
         override 
         returns (bool) 
     {
-        return transferTokens(to, amount, ITribalTypes.PaymentType.Tribal);
+        return transferTokens(msg.sender, to, amount, ITribalToken.PaymentType.Tribal);
     }
 
     // Admin function to update membership fee

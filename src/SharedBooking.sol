@@ -3,7 +3,7 @@ pragma solidity 0.8.24;
 
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./ITribalTypes.sol";
+import "./ITribalToken.sol";
 import "./ISoloBooking.sol";
 
 contract SharedBooking is Ownable2Step {
@@ -15,7 +15,7 @@ contract SharedBooking is Ownable2Step {
     error DatesNotAvailable();
     error InvalidShareCount();
     error HomeNotListed();
-    error InvalidPaymentMethod(ITribalTypes.PaymentType paymentType);
+    error InvalidPaymentMethod(ITribalToken.PaymentType paymentType);
 
     struct SharedBookingData {
         uint256 totalAmount;
@@ -61,12 +61,12 @@ contract SharedBooking is Ownable2Step {
         uint256 startDate,
         uint256 endDate,
         uint256 totalShares,
-        ITribalTypes.PaymentType paymentType
+        ITribalToken.PaymentType paymentType
     ) external returns (uint256) {
         ISoloBooking.HomeListing memory listing = soloBookingContract.homeListings(homeId);
 
-        if ((paymentType == ITribalTypes.PaymentType.Tribal && !listing.acceptsTribal) || 
-        (paymentType == ITribalTypes.PaymentType.USDC && !listing.acceptsUsdc)) {
+        if ((paymentType == ITribalToken.PaymentType.Tribal && !listing.acceptsTribal) || 
+        (paymentType == ITribalToken.PaymentType.USDC && !listing.acceptsUsdc)) {
         revert InvalidPaymentMethod(paymentType);
     }
         if (startDate >= endDate || startDate <= block.timestamp) revert InvalidDateRange();
@@ -111,7 +111,7 @@ contract SharedBooking is Ownable2Step {
     function buyShare(
         uint256 homeId,
         uint256 requestId,
-        ITribalTypes.PaymentType paymentType
+        ITribalToken.PaymentType paymentType
     ) external {
         _buyShare(homeId, requestId, paymentType);
     }
@@ -119,7 +119,7 @@ contract SharedBooking is Ownable2Step {
     function _buyShare(
         uint256 homeId,
         uint256 requestId,
-        ITribalTypes.PaymentType paymentType
+        ITribalToken.PaymentType paymentType
     ) internal {
         SharedBookingData storage booking = sharedBookings[homeId][requestId];
         
@@ -127,7 +127,7 @@ contract SharedBooking is Ownable2Step {
         if (booking.numSharesAvailable == 0) revert NoSharesAvailable();
         if (booking.shares[msg.sender] != 0) revert AlreadyParticipating();
 
-        address tokenAddress = paymentType == ITribalTypes.PaymentType.Tribal ? 
+        address tokenAddress = paymentType == ITribalToken.PaymentType.Tribal ? 
             soloBookingContract.tribalTokenAddress() : 
             soloBookingContract.usdcAddress();
             

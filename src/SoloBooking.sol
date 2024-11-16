@@ -2,12 +2,7 @@
 pragma solidity 0.8.24;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
-import "./ITribalTypes.sol";
-
-// Add interface for TribalToken's specific functions
-interface ITribalToken is IERC20 {
-    function transferTokens(address to, uint256 amount, ITribalTypes.PaymentType tokenType) external returns (bool);
-}
+import "./ITribalToken.sol";
 
 contract SoloBooking is Ownable2Step {
     error InvalidDateRange(uint256 startDate, uint256 endDate);
@@ -17,7 +12,7 @@ contract SoloBooking is Ownable2Step {
     error TokenTransferFailed(address token, uint256 amount);
     error HomeNotListed();
     error InvalidHomeData();
-    error InvalidPaymentMethod(ITribalTypes.PaymentType paymentType);
+    error InvalidPaymentMethod(ITribalToken.PaymentType paymentType);
     error InvalidPrice(string tokenType);
 
     uint256 private constant FUTURE_DATES = 100;
@@ -125,7 +120,7 @@ contract SoloBooking is Ownable2Step {
         uint256 homeId,
         uint256 startDate,
         uint256 endDate,
-        ITribalTypes.PaymentType paymentType
+        ITribalToken.PaymentType paymentType
     ) external validDateRange(startDate, endDate) datesAvailable(homeId, startDate, endDate) {
         _processBooking(homeId, startDate, endDate, paymentType);
     }
@@ -135,20 +130,25 @@ contract SoloBooking is Ownable2Step {
         uint256 homeId,
         uint256 startDate,
         uint256 endDate,
-        ITribalTypes.PaymentType paymentType
+        ITribalToken.PaymentType paymentType
     ) internal {
         HomeListing storage listing = homes[homeId];
         address owner = homeOwners[homeId];
         
-        if ((paymentType == ITribalTypes.PaymentType.Tribal && !listing.acceptsTribal) || 
-            (paymentType == ITribalTypes.PaymentType.USDC && !listing.acceptsUsdc)) {
+        if ((paymentType == ITribalToken.PaymentType.Tribal && !listing.acceptsTribal) || 
+            (paymentType == ITribalToken.PaymentType.USDC && !listing.acceptsUsdc)) {
             revert InvalidPaymentMethod(paymentType);
         }
         
         uint256 totalAmount = _calculateTotalAmount(startDate, endDate, paymentType, listing);
-        address tokenAddress = paymentType == ITribalTypes.PaymentType.Tribal ? tribalTokenAddress : usdcAddress;
+        address tokenAddress = paymentType == ITribalToken.PaymentType.Tribal ? tribalTokenAddress : usdcAddress;
         
-        if (!ITribalToken(tokenAddress).transferTokens(owner, totalAmount, paymentType)) {
+        if (!ITribalToken(tokenAddress).transferTokens(
+            msg.sender,  // from - the person booking
+            owner,       // to - the home owner
+            totalAmount, // amount to transfer
+            paymentType  // which token to use
+        )) {
             revert TokenTransferFailed(tokenAddress, totalAmount);
         }
         
@@ -292,10 +292,10 @@ contract SoloBooking is Ownable2Step {
     function _calculateTotalAmount(
         uint256 startDate,
         uint256 endDate,
-        ITribalTypes.PaymentType paymentType,
+        ITribalToken.PaymentType paymentType,
         HomeListing memory listing
     ) internal pure returns (uint256) {
-        return (paymentType == ITribalTypes.PaymentType.Tribal ? listing.tribalPrice : listing.usdcPrice) * 
+        return (paymentType == ITribalToken.PaymentType.Tribal ? listing.tribalPrice : listing.usdcPrice) * 
                (endDate - startDate + 1);
     }
 
