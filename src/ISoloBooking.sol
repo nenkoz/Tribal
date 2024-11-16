@@ -4,6 +4,8 @@ pragma solidity 0.8.24;
 import "./ITribalTypes.sol";
 
 interface ISoloBooking {
+    enum HomeStatus { Available, Unavailable, Booked }
+
     struct HomeListing {
         bytes32 contentHash;    
         uint256 tribalPrice;      
@@ -14,6 +16,12 @@ interface ISoloBooking {
         bool isFree;
     }
 
+    struct HomeAvailability {
+        uint8[100] dailyStatus;  // FUTURE_DATES = 100
+        uint256 startDay;
+    }
+
+    function homeAvailability(uint256 homeId) external view returns (HomeAvailability memory);
     function homeListings(uint256 homeId) external view returns (HomeListing memory);
     function tribalTokenAddress() external view returns (address);
     function usdcAddress() external view returns (address);

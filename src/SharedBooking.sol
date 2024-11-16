@@ -14,6 +14,8 @@ contract SharedBooking is Ownable2Step {
     error InvalidDateRange();
     error DatesNotAvailable();
     error InvalidShareCount();
+    error HomeNotListed();
+    error InvalidPaymentMethod(ITribalTypes.PaymentType paymentType);
 
     struct SharedBookingData {
         uint256 totalAmount;
@@ -61,11 +63,25 @@ contract SharedBooking is Ownable2Step {
         uint256 totalShares,
         ITribalTypes.PaymentType paymentType
     ) external returns (uint256) {
-        if (startDate >= endDate) revert InvalidDateRange();
+        ISoloBooking.HomeListing memory listing = soloBookingContract.homeListings(homeId);
+
+        if ((paymentType == ITribalTypes.PaymentType.Tribal && !listing.acceptsTribal) || 
+        (paymentType == ITribalTypes.PaymentType.USDC && !listing.acceptsUsdc)) {
+        revert InvalidPaymentMethod(paymentType);
+    }
+        if (startDate >= endDate || startDate <= block.timestamp) revert InvalidDateRange();
         if (totalShares < 2) revert InvalidShareCount();
         
+        // Add check for date availability
+        uint256 date = startDate;
+        do {
+            if (uint8(soloBookingContract.homeAvailability(homeId).dailyStatus[date]) != uint8(ISoloBooking.HomeStatus.Available)) {
+                revert DatesNotAvailable();
+            }
+        } while (++date <= endDate);
+        
         // Calculate total cost through SoloBooking contract
-        ISoloBooking.HomeListing memory listing = soloBookingContract.homeListings(homeId);
+        if (!listing.isActive) revert HomeNotListed();
         uint256 totalAmount = soloBookingContract._calculateTotalAmount(
             startDate, 
             endDate, 
