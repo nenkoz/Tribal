@@ -118,16 +118,6 @@ contract Bookings is Ownable2Step {
         _;
     }
 
-    // Update internal payment function
-    function _processPayment(
-        address to,
-        address tokenAddress,
-        uint256 amount,
-        ITribalTypes.PaymentType paymentType
-    ) internal returns (bool) {
-        return ITribalToken(tokenAddress).transferTokens(to, amount, paymentType);
-    }
-
     function book(
         uint256 homeId,
         uint256 startDate,
@@ -155,12 +145,11 @@ contract Bookings is Ownable2Step {
         uint256 totalAmount = _calculateTotalAmount(startDate, endDate, paymentType, listing);
         address tokenAddress = paymentType == ITribalTypes.PaymentType.Tribal ? tribalTokenAddress : usdcAddress;
         
-        if (!_processPayment(owner, tokenAddress, totalAmount, paymentType)) {
+        if (!ITribalToken(tokenAddress).transferTokens(owner, totalAmount, paymentType)) {
             revert TokenTransferFailed(tokenAddress, totalAmount);
         }
         
         _updateAvailability(homeId, startDate, endDate);
-        
         emit PaymentProcessed(homeId, block.timestamp, tokenAddress, totalAmount);
         emit AvailabilityUpdatedBatch(homeId, startDate, endDate, HomeStatus.Booked);
         emit BookingConfirmed(homeId, block.timestamp);
