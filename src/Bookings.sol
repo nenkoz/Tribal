@@ -18,6 +18,7 @@ contract Bookings is Ownable2Step {
     error HomeNotListed();
     error InvalidHomeData();
     error InvalidPaymentMethod(ITribalTypes.PaymentType paymentType);
+    error InvalidPrice(string tokenType);
 
     uint256 private constant FUTURE_DATES = 100;
     uint256 private constant SECONDS_PER_DAY = 86400;
@@ -31,7 +32,8 @@ contract Bookings is Ownable2Step {
         uint256 usdcPrice;    
         bool isActive;         
         bool acceptsTribal;      
-        bool acceptsUsdc;     
+        bool acceptsUsdc;
+        bool isFree;     // Add this field
     }
 
     struct HomeAvailability {
@@ -63,12 +65,6 @@ contract Bookings is Ownable2Step {
     event HomeListed(
         uint256 indexed homeId,
         bytes32 indexed contentHash,
-        uint256 timestamp
-    );
-    event HomeUnlisted(uint256 indexed homeId);
-    event ListingUpdated(
-        uint256 indexed homeId, 
-        bytes32 indexed newContentHash,
         uint256 timestamp
     );
     event UsdcAddressUpdated(address indexed oldAddress, address indexed newAddress);
@@ -164,49 +160,50 @@ contract Bookings is Ownable2Step {
         uint256 tribalPrice,
         uint256 usdcPrice,
         bool acceptsTribal,
-        bool acceptsUsdc
+        bool acceptsUsdc,
+        bool isFree
     ) external returns (uint256) {
+        _validateHomeData(contentHash, tribalPrice, usdcPrice, acceptsTribal, acceptsUsdc, isFree);
+        
         uint256 homeId = nextHomeId;
         
-        if (contentHash == bytes32(0) || (!acceptsTribal && !acceptsUsdc) || 
-            (acceptsTribal && tribalPrice == 0) || (acceptsUsdc && usdcPrice == 0)) {
-            revert InvalidHomeData();
-        }
-        
-        // Add to allHomes array
-        allHomes.push(homeId);
-        
-        // Batch storage updates
-        homeOwners[homeId] = msg.sender;
-        ownerHomes[msg.sender].push(homeId);
-        
-        // Initialize availability array
-        unchecked {
-            HomeAvailability storage availability = homeAvailability[homeId];
-            uint256 today = block.timestamp / SECONDS_PER_DAY;
-            
-            for (uint256 i = 0; i < FUTURE_DATES; ++i) {
-                availability.dailyStatus[i] = uint8(HomeStatus.Unavailable);
+        // Check if sender already owns this home
+        if (homeOwners[homeId] != address(0)) {
+            // If updating existing home, verify ownership
+            if (homeOwners[homeId] != msg.sender) {
+                revert NotHomeOwner();
             }
-            availability.startDay = today;
+        } else {
+            // New home registration
+            allHomes.push(homeId);
+            homeOwners[homeId] = msg.sender;
+            ownerHomes[msg.sender].push(homeId);
+            
+            // Increment nextHomeId only for new registrations
+            unchecked {
+                nextHomeId++;
+            }
         }
         
-        // Create listing
+        // Initialize or update availability array
+        unchecked {
+            for (uint256 i = 0; i < FUTURE_DATES; ++i) {
+                homeAvailability[homeId].dailyStatus[i] = uint8(HomeStatus.Unavailable);
+            }
+            homeAvailability[homeId].startDay = block.timestamp / SECONDS_PER_DAY;
+        }
+        
+        // Create or update listing
         homeListings[homeId] = HomeListing({
             contentHash: contentHash,
-            isActive: true,
             tribalPrice: tribalPrice,
             usdcPrice: usdcPrice,
             acceptsTribal: acceptsTribal,
-            acceptsUsdc: acceptsUsdc
+            acceptsUsdc: acceptsUsdc,
+            isFree: isFree,
+            isActive: true
         });
         
-        // Increment nextHomeId for next registration
-        unchecked {
-            nextHomeId++;
-        }
-        
-        emit HomeOwnershipRegistered(homeId, msg.sender);
         emit HomeListed(homeId, contentHash, block.timestamp);
         
         return homeId;
@@ -221,38 +218,6 @@ contract Bookings is Ownable2Step {
         emit TribalTokenAddressUpdated(oldAddress, newAddress);
     }
 
-    function updateListing(
-        uint256 homeId,
-        bytes32 newContentHash,
-        uint256 tribalPrice,
-        uint256 usdcPrice,
-        bool acceptsTribal,
-        bool acceptsUsdc
-    ) external onlyHomeOwner(homeId) {
-        HomeListing storage listing = homeListings[homeId];
-        
-        listing.contentHash = newContentHash;
-        listing.tribalPrice = tribalPrice;
-        listing.usdcPrice = usdcPrice;
-        listing.acceptsTribal = acceptsTribal;
-        listing.acceptsUsdc = acceptsUsdc;
-
-        emit ListingUpdated(homeId, newContentHash, block.timestamp);
-    }
-
-    // Add unlistHome function
-    function unlistHome(uint256 homeId) external onlyHomeOwner(homeId) {
-        HomeListing storage listing = homeListings[homeId];
-        if (!listing.isActive) {
-            revert HomeNotListed();
-        }
-
-        listing.isActive = false;
-        
-        emit HomeUnlisted(homeId);
-    }
-
-    // Add this new function with event
     function updateUsdcAddress(address newAddress) external onlyOwner {
         address oldAddress = usdcAddress;
         usdcAddress = newAddress;
@@ -280,5 +245,28 @@ contract Bookings is Ownable2Step {
                 homeAvailability[homeId].dailyStatus[date] = uint8(HomeStatus.Booked);
             } while (++date <= endDate);
         }
+    }
+
+    function _validateHomeData(
+        bytes32 contentHash,
+        uint256 tribalPrice,
+        uint256 usdcPrice,
+        bool acceptsTribal,
+        bool acceptsUsdc,
+        bool isFree
+    ) internal pure {
+        if (contentHash == bytes32(0)) revert InvalidHomeData();
+        
+        // If it's free, no need to check payment methods
+        if (isFree) {
+            return;
+        }
+        
+        // Otherwise, must accept at least one payment type
+        if (!acceptsTribal && !acceptsUsdc) revert InvalidHomeData();
+        
+        // Only validate prices if accepting that token and not free
+        if (acceptsTribal && tribalPrice == 0) revert InvalidPrice("TRIBAL");
+        if (acceptsUsdc && usdcPrice == 0) revert InvalidPrice("USDC");
     }
 }
