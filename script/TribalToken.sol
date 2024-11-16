@@ -50,6 +50,15 @@ contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
         membershipFee = _membershipFee;
     }
 
+    // Admin function to verify users after KYC
+    function verifyUser(address user) external payable onlyOwner {
+        if (users[user].verified) {
+            revert UserAlreadyVerified();
+        }
+        users[user].verified = true;
+        emit UserVerified(user);
+    }
+
     // Add new modifiers
     modifier onlyVerifiedUser(address user) {
         if (!users[user].verified) {
@@ -112,4 +121,23 @@ contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
         membershipFee = newFee;
         emit MembershipFeeUpdated(oldFee, newFee);
     }
+
+    // Updated withdrawal function with reentrancy protection
+    function withdrawFees() external nonReentrant payable onlyOwner {
+        uint256 balance = address(this).balance;
+        if (balance == 0) {
+            revert NoFeesToWithdraw();
+        }
+        
+        // Clear balance before transfer to prevent reentrancy
+        (bool success, ) = payable(owner()).call{value: balance}("");
+        if (!success) {
+            revert WithdrawalFailed();
+        }
+        
+        emit FeesWithdrawn(owner(), balance);
+    }
+
+    // Keep this to accept ETH
+    receive() external payable {}
 }
