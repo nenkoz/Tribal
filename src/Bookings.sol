@@ -2,6 +2,12 @@
 pragma solidity 0.8.24;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
+import "./ITribalTypes.sol";
+
+// Add interface for TribalToken's specific functions
+interface ITribalToken is IERC20 {
+    function transferTokens(address to, uint256 amount, ITribalTypes.PaymentType tokenType) external returns (bool);
+}
 
 contract Bookings is Ownable2Step {
     error InvalidDateRange(uint256 startDate, uint256 endDate);
@@ -11,14 +17,13 @@ contract Bookings is Ownable2Step {
     error TokenTransferFailed(address token, uint256 amount);
     error HomeNotListed();
     error InvalidHomeData();
-    error InvalidPaymentMethod(PaymentType paymentType);
+    error InvalidPaymentMethod(ITribalTypes.PaymentType paymentType);
 
     uint256 private constant FUTURE_DATES = 100;
     uint256 private constant SECONDS_PER_DAY = 86400;
 
     // Enum for home status on a specific date
     enum HomeStatus { Available, Unavailable, Booked }
-    enum PaymentType { Tribal, USDC }
 
     struct HomeListing {
         bytes32 contentHash;    
@@ -113,21 +118,21 @@ contract Bookings is Ownable2Step {
         _;
     }
 
-    // New internal function to handle payment processing
+    // Update internal payment function
     function _processPayment(
-        address from,
         address to,
         address tokenAddress,
-        uint256 amount
+        uint256 amount,
+        ITribalTypes.PaymentType paymentType
     ) internal returns (bool) {
-        return IERC20(tokenAddress).transferFrom(from, to, amount);
+        return ITribalToken(tokenAddress).transferTokens(to, amount, paymentType);
     }
 
     function book(
         uint256 homeId,
         uint256 startDate,
         uint256 endDate,
-        PaymentType paymentType
+        ITribalTypes.PaymentType paymentType
     ) external validDateRange(startDate, endDate) datesAvailable(homeId, startDate, endDate) {
         _processBooking(homeId, startDate, endDate, paymentType);
     }
@@ -137,20 +142,20 @@ contract Bookings is Ownable2Step {
         uint256 homeId,
         uint256 startDate,
         uint256 endDate,
-        PaymentType paymentType
+        ITribalTypes.PaymentType paymentType
     ) internal {
         HomeListing memory listing = homeListings[homeId];
         address owner = homeOwners[homeId];
         
-        if ((paymentType == PaymentType.Tribal && !listing.acceptsTribal) || 
-            (paymentType == PaymentType.USDC && !listing.acceptsUsdc)) {
+        if ((paymentType == ITribalTypes.PaymentType.Tribal && !listing.acceptsTribal) || 
+            (paymentType == ITribalTypes.PaymentType.USDC && !listing.acceptsUsdc)) {
             revert InvalidPaymentMethod(paymentType);
         }
         
         uint256 totalAmount = _calculateTotalAmount(startDate, endDate, paymentType, listing);
-        address tokenAddress = paymentType == PaymentType.Tribal ? tribalTokenAddress : usdcAddress;
+        address tokenAddress = paymentType == ITribalTypes.PaymentType.Tribal ? tribalTokenAddress : usdcAddress;
         
-        if (!_processPayment(msg.sender, owner, tokenAddress, totalAmount)) {
+        if (!_processPayment(owner, tokenAddress, totalAmount, paymentType)) {
             revert TokenTransferFailed(tokenAddress, totalAmount);
         }
         
@@ -258,10 +263,10 @@ contract Bookings is Ownable2Step {
     function _calculateTotalAmount(
         uint256 startDate,
         uint256 endDate,
-        PaymentType paymentType,
+        ITribalTypes.PaymentType paymentType,
         HomeListing memory listing
     ) internal pure returns (uint256) {
-        return (paymentType == PaymentType.Tribal ? listing.tribalPrice : listing.usdcPrice) * 
+        return (paymentType == ITribalTypes.PaymentType.Tribal ? listing.tribalPrice : listing.usdcPrice) * 
                (endDate - startDate + 1);
     }
 

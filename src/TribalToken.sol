@@ -62,7 +62,7 @@ contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
     }
 
     // Admin function to verify users after KYC
-    function verifyUser(address user) external payable onlyOwner {
+    function verifyUser(address user) external onlyOwner {
         if (users[user].verified) {
             revert UserAlreadyVerified();
         }
