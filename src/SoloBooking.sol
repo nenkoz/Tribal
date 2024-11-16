@@ -33,25 +33,31 @@ contract SoloBooking is Ownable2Step {
         bool isActive;         
         bool acceptsTribal;      
         bool acceptsUsdc;
-        bool isFree;     // Add this field
+        bool isFree;
+        uint8[FUTURE_DATES] dailyStatus;  // Moved from HomeAvailability
+        uint256 startDay;                 // Moved from HomeAvailability
     }
 
-    struct HomeAvailability {
-        uint8[FUTURE_DATES] dailyStatus;  // uint8 instead of enum saves gas
-        uint256 startDay;
+        // For updating existing listings
+    struct UpdateListingParams {
+        bytes32 contentHash;
+        uint256 tribalPrice;
+        uint256 usdcPrice;
+        bool acceptsTribal;
+        bool acceptsUsdc;
+        bool isFree;
+        bool updateContent;     // flags to indicate which fields
+        bool updateTribalPrice; // should be updated
+        bool updateUsdcPrice;
+        bool updateAcceptsTribal;
+        bool updateAcceptsUsdc;
+        bool updateIsFree;
     }
 
-    // Replace homeStatus mapping with new structure
-    mapping(uint256 homeId => HomeAvailability) public homeAvailability;
-    
-    // Mapping: homeId => owner address
+    // Single mapping for all home data
+    mapping(uint256 homeId => HomeListing) public homes;
     mapping(uint256 homeId => address owner) public homeOwners;
-    
-    // Add reverse mapping to track all homes per owner
     mapping(address owner => uint256[] homeIds) public ownerHomes;
-
-    // Mapping remains the same but stores less data
-    mapping(uint256 homeId => HomeListing listing) public homeListings;
 
     event BookingConfirmed(uint256 indexed homeId, uint256 requestId);
     event TribalTokenAddressUpdated(address indexed oldAddress, address indexed newAddress);
@@ -108,7 +114,7 @@ contract SoloBooking is Ownable2Step {
     modifier datesAvailable(uint256 homeId, uint256 startDate, uint256 endDate) {
         uint256 date = startDate;
         do {
-            if (uint8(homeAvailability[homeId].dailyStatus[date]) != uint8(HomeStatus.Available)) {
+            if (uint8(homes[homeId].dailyStatus[date]) != uint8(HomeStatus.Available)) {
                 revert DatesNotAvailable(homeId, date);
             }
         } while (++date <= endDate);  // More gas efficient than for loop
@@ -131,7 +137,7 @@ contract SoloBooking is Ownable2Step {
         uint256 endDate,
         ITribalTypes.PaymentType paymentType
     ) internal {
-        HomeListing storage listing = homeListings[homeId];
+        HomeListing storage listing = homes[homeId];
         address owner = homeOwners[homeId];
         
         if ((paymentType == ITribalTypes.PaymentType.Tribal && !listing.acceptsTribal) || 
@@ -172,53 +178,76 @@ contract SoloBooking is Ownable2Step {
             nextHomeId++;
         }
         
-        // Initialize all dates as Available
+        // Initialize dailyStatus array
+        uint8[FUTURE_DATES] memory initialStatus;
         unchecked {
             for (uint256 i = 0; i < FUTURE_DATES; ++i) {
-                homeAvailability[homeId].dailyStatus[i] = uint8(HomeStatus.Available);
+                initialStatus[i] = uint8(HomeStatus.Available);
             }
-            homeAvailability[homeId].startDay = block.timestamp / SECONDS_PER_DAY;
         }
         
-        // Create listing
-        homeListings[homeId] = HomeListing({
+        // Create listing with all fields
+        homes[homeId] = HomeListing({
             contentHash: contentHash,
             tribalPrice: tribalPrice,
             usdcPrice: usdcPrice,
             acceptsTribal: acceptsTribal,
             acceptsUsdc: acceptsUsdc,
             isFree: isFree,
-            isActive: true
+            isActive: true,
+            dailyStatus: initialStatus,
+            startDay: block.timestamp / SECONDS_PER_DAY
         });
         
         emit HomeListed(homeId, contentHash, block.timestamp);
         return homeId;
     }
 
-    // For updating existing listings
     function updateListing(
         uint256 homeId,
-        bytes32 contentHash,
-        uint256 tribalPrice,
-        uint256 usdcPrice,
-        bool acceptsTribal,
-        bool acceptsUsdc,
-        bool isFree
+        UpdateListingParams calldata params
     ) external onlyHomeOwner(homeId) {
-        _validateHomeData(contentHash, tribalPrice, usdcPrice, acceptsTribal, acceptsUsdc, isFree);
+        HomeListing storage listing = homes[homeId];
         
-        // Update listing
-        homeListings[homeId] = HomeListing({
-            contentHash: contentHash,
-            tribalPrice: tribalPrice,
-            usdcPrice: usdcPrice,
-            acceptsTribal: acceptsTribal,
-            acceptsUsdc: acceptsUsdc,
-            isFree: isFree,
-            isActive: true
-        });
+        // Update only the fields that are specified
+        if (params.updateContent) {
+            if (params.contentHash == bytes32(0)) revert InvalidHomeData();
+            listing.contentHash = params.contentHash;
+        }
         
-        emit HomeListed(homeId, contentHash, block.timestamp);
+        if (params.updateTribalPrice) {
+            if (params.acceptsTribal && params.tribalPrice == 0) revert InvalidPrice("TRIBAL");
+            listing.tribalPrice = params.tribalPrice;
+        }
+        
+        if (params.updateUsdcPrice) {
+            if (params.acceptsUsdc && params.usdcPrice == 0) revert InvalidPrice("USDC");
+            listing.usdcPrice = params.usdcPrice;
+        }
+        
+        if (params.updateAcceptsTribal) {
+            listing.acceptsTribal = params.acceptsTribal;
+        }
+        
+        if (params.updateAcceptsUsdc) {
+            listing.acceptsUsdc = params.acceptsUsdc;
+        }
+        
+        if (params.updateIsFree) {
+            listing.isFree = params.isFree;
+        }
+        
+        // Validate the final state
+        _validateHomeData(
+            listing.contentHash,
+            listing.tribalPrice,
+            listing.usdcPrice,
+            listing.acceptsTribal,
+            listing.acceptsUsdc,
+            listing.isFree
+        );
+        
+        emit HomeListed(homeId, listing.contentHash, block.timestamp);
     }
 
     // Separate validation function for cleaner code and reusability
@@ -278,7 +307,7 @@ contract SoloBooking is Ownable2Step {
         unchecked {
             uint256 date = startDate;
             do {
-                homeAvailability[homeId].dailyStatus[date] = uint8(HomeStatus.Booked);
+                homes[homeId].dailyStatus[date] = uint8(HomeStatus.Booked);
             } while (++date <= endDate);
         }
     }
@@ -288,7 +317,7 @@ contract SoloBooking is Ownable2Step {
     }
 
     function toggleListingStatus(uint256 homeId) external onlyHomeOwner(homeId) {
-        homeListings[homeId].isActive = !homeListings[homeId].isActive;
-        emit ListingStatusUpdated(homeId, homeListings[homeId].isActive);
+        homes[homeId].isActive = !homes[homeId].isActive;
+        emit ListingStatusUpdated(homeId, homes[homeId].isActive);
     }
 }
