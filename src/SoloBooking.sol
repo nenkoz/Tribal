@@ -330,4 +330,8 @@ contract SoloBooking is Ownable2Step {
         homes[homeId].isActive = !homes[homeId].isActive;
         emit ListingStatusUpdated(homeId, homes[homeId].isActive);
     }
+
+    function getHomeAvailability(uint256 homeId) external view returns (uint8[FUTURE_DATES] memory) {
+        return homes[homeId].dailyStatus;
+    }
 }
