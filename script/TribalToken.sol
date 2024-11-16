@@ -1,0 +1,115 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
+    // Custom errors
+    error UserAlreadyVerified();
+    error UserNotVerified();
+    error IncorrectMembershipFee();
+    error MembershipExpired(address user);
+    error NoFeesToWithdraw();
+    error WithdrawalFailed();
+
+    // Yearly membership fee in wei
+    uint256 public membershipFee;
+    
+    enum TransferFailureReason {
+        NOT_VERIFIED_SENDER,
+        NOT_VERIFIED_RECIPIENT,
+        EXPIRED_SENDER,
+        EXPIRED_RECIPIENT
+    }
+
+    // Add User struct
+    struct User {
+        bool verified;
+        uint256 expiryTimestamp;
+    }
+    
+    // Replace multiple mappings with a single mapping
+    mapping(address user => User userData) public users;
+    
+    // Events
+    event UserVerified(address indexed user);
+    event MembershipRenewed(address indexed user, uint256 indexed expiryDate);
+    event MembershipFeeUpdated(uint256 indexed oldFee, uint256 indexed newFee);
+    event FeesWithdrawn(address indexed owner, uint256 indexed amount);
+    event TokenTransferAttempted(address indexed from, address indexed to, uint256 indexed amount, bool success);
+    event TokenTransferFailed(
+        address indexed from, 
+        address indexed to, 
+        uint256 indexed amount, 
+        TransferFailureReason reason
+    );
+
+    constructor(uint256 _membershipFee) ERC20("Tribal Community Token", "TRIBAL") Ownable(msg.sender) {
+        membershipFee = _membershipFee;
+    }
+
+    // Add new modifiers
+    modifier onlyVerifiedUser(address user) {
+        if (!users[user].verified) {
+            revert UserNotVerified();
+        }
+        _;
+    }
+
+    // Function for users to pay membership fee and receive tokens
+    function payMembershipFee() external payable onlyVerifiedUser(msg.sender) {
+        if (msg.value != membershipFee) {
+            revert IncorrectMembershipFee();
+        }
+        
+        users[msg.sender].expiryTimestamp = block.timestamp + 365 days;
+        _mint(msg.sender, 1000e18); // 1000 tokens with 18 decimals
+        
+        emit MembershipRenewed(msg.sender, users[msg.sender].expiryTimestamp);
+    }
+
+    // Override transfer function to add restrictions
+    function transfer(address to, uint256 amount) 
+        public 
+        virtual 
+        override 
+        returns (bool) 
+    {
+        User memory sender = users[msg.sender];
+        User memory recipient = users[to];
+        uint256 currentTime = block.timestamp;
+
+        if (!sender.verified) {
+            emit TokenTransferFailed(msg.sender, to, amount, TransferFailureReason.NOT_VERIFIED_SENDER);
+            revert UserNotVerified();
+        }
+        if (!recipient.verified) {
+            emit TokenTransferFailed(msg.sender, to, amount, TransferFailureReason.NOT_VERIFIED_RECIPIENT);
+            revert UserNotVerified();
+        }
+        if (sender.expiryTimestamp <= currentTime) {
+            emit TokenTransferFailed(msg.sender, to, amount, TransferFailureReason.EXPIRED_SENDER);
+            revert MembershipExpired(msg.sender);
+        }
+        if (recipient.expiryTimestamp <= currentTime) {
+            emit TokenTransferFailed(msg.sender, to, amount, TransferFailureReason.EXPIRED_RECIPIENT);
+            revert MembershipExpired(to);
+        }
+
+        bool success = super.transfer(to, amount);
+        emit TokenTransferAttempted(msg.sender, to, amount, success);
+        return success;
+    }
+
+    // Admin function to update membership fee
+    function setMembershipFee(uint256 newFee) external payable onlyOwner {
+        uint256 oldFee = membershipFee;
+        if (newFee == oldFee) {
+            return;
+        }
+        membershipFee = newFee;
+        emit MembershipFeeUpdated(oldFee, newFee);
+    }
+}
