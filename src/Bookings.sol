@@ -86,6 +86,9 @@ contract Bookings is Ownable2Step {
     // Add state variable
     uint256[] public allHomes;
 
+    // Add state variable to track next homeId
+    uint256 private nextHomeId;
+
     // Add constructor to set TribalToken address
     constructor(address _tribalTokenAddress, address _usdcAddress) Ownable(msg.sender) {
         tribalTokenAddress = _tribalTokenAddress;
@@ -157,14 +160,14 @@ contract Bookings is Ownable2Step {
 
     // Function to register home ownership
     function registerHome(
-        uint256 homeId,
         bytes32 contentHash,
         uint256 tribalPrice,
         uint256 usdcPrice,
         bool acceptsTribal,
         bool acceptsUsdc
-    ) external {
-        if (homeOwners[homeId] != address(0)) revert HomeAlreadyRegistered();
+    ) external returns (uint256) {
+        uint256 homeId = nextHomeId;
+        
         if (contentHash == bytes32(0) || (!acceptsTribal && !acceptsUsdc) || 
             (acceptsTribal && tribalPrice == 0) || (acceptsUsdc && usdcPrice == 0)) {
             revert InvalidHomeData();
@@ -177,7 +180,7 @@ contract Bookings is Ownable2Step {
         homeOwners[homeId] = msg.sender;
         ownerHomes[msg.sender].push(homeId);
         
-        // Initialize availability array (unchecked for gas optimization)
+        // Initialize availability array
         unchecked {
             HomeAvailability storage availability = homeAvailability[homeId];
             uint256 today = block.timestamp / SECONDS_PER_DAY;
@@ -198,8 +201,15 @@ contract Bookings is Ownable2Step {
             acceptsUsdc: acceptsUsdc
         });
         
+        // Increment nextHomeId for next registration
+        unchecked {
+            nextHomeId++;
+        }
+        
         emit HomeOwnershipRegistered(homeId, msg.sender);
         emit HomeListed(homeId, contentHash, block.timestamp);
+        
+        return homeId;
     }
 
     // If you add the Tribal token update function, include event
