@@ -24,7 +24,7 @@ contract SoloBooking is Ownable2Step {
     uint256 private constant SECONDS_PER_DAY = 86400;
 
     // Enum for home status on a specific date
-    enum HomeStatus { Available, Unavailable, Booked }
+    enum HomeStatus { Available, Booked }
 
     struct HomeListing {
         bytes32 contentHash;    
@@ -79,9 +79,6 @@ contract SoloBooking is Ownable2Step {
     // Add this state variable near the top with other contract state variables
     address public tribalTokenAddress;
     address public usdcAddress;
-
-    // Add state variable
-    uint256[] public allHomes;
 
     // Add state variable to track next homeId
     uint256 private nextHomeId;
@@ -168,8 +165,6 @@ contract SoloBooking is Ownable2Step {
         
         uint256 homeId = nextHomeId;
         
-        // New home registration
-        allHomes.push(homeId);
         homeOwners[homeId] = msg.sender;
         ownerHomes[msg.sender].push(homeId);
         
@@ -177,10 +172,10 @@ contract SoloBooking is Ownable2Step {
             nextHomeId++;
         }
         
-        // Initialize availability array
+        // Initialize all dates as Available
         unchecked {
             for (uint256 i = 0; i < FUTURE_DATES; ++i) {
-                homeAvailability[homeId].dailyStatus[i] = uint8(HomeStatus.Unavailable);
+                homeAvailability[homeId].dailyStatus[i] = uint8(HomeStatus.Available);
             }
             homeAvailability[homeId].startDay = block.timestamp / SECONDS_PER_DAY;
         }
