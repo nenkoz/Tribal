@@ -143,13 +143,23 @@ contract SoloBooking is Ownable2Step {
         uint256 totalAmount = _calculateTotalAmount(startDate, endDate, paymentType, listing);
         address tokenAddress = paymentType == ITribalToken.PaymentType.Tribal ? tribalTokenAddress : usdcAddress;
         
-        if (!ITribalToken(tokenAddress).transferTokens(
-            msg.sender,  // from - the person booking
-            owner,       // to - the home owner
-            totalAmount, // amount to transfer
-            paymentType  // which token to use
-        )) {
-            revert TokenTransferFailed(tokenAddress, totalAmount);
+        if (paymentType == ITribalToken.PaymentType.USDC) {
+            if (!IERC20(usdcAddress).transferFrom(
+                msg.sender,
+                owner,
+                totalAmount
+            )) {
+                revert TokenTransferFailed(usdcAddress, totalAmount);
+            }
+        } else {
+            if (!ITribalToken(tribalTokenAddress).transferTokens(
+                msg.sender,
+                owner,
+                totalAmount,
+                paymentType
+            )) {
+                revert TokenTransferFailed(tribalTokenAddress, totalAmount);
+            }
         }
         
         _updateAvailability(homeId, startDate, endDate);

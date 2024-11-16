@@ -123,7 +123,7 @@ contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
 
         bool success;
         if (paymentType == ITribalToken.PaymentType.Tribal) {
-            success = super.transferFrom(from, to, amount);
+            success = this.transferFrom(from, to, amount);
         } else {
             success = IERC20(usdcAddress).transferFrom(from, to, amount);
         }
@@ -175,5 +175,17 @@ contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
         tribalBalance = this.balanceOf(account);
         usdcBalance = IERC20(usdcAddress).balanceOf(account);
         return (tribalBalance, usdcBalance);
+    }
+
+    // Add this function to override ERC20's transferFrom
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) public virtual override returns (bool) {
+        address spender = _msgSender();
+        _spendAllowance(from, spender, amount);  // Check allowance
+        _transfer(from, to, amount);
+        return true;
     }
 }
