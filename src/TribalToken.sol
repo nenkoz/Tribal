@@ -6,8 +6,6 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./ITribalToken.sol";
-import "forge-std/console.sol";
-
 
 contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
     // Custom errors
@@ -99,9 +97,6 @@ contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
         uint256 currentTime = block.timestamp;
 
         // Verify users
-        console.log("Sender address:", from);
-        console.log("Recipient address:", to);
-        console.log("Transfer amount:", amount);
         if (!sender.verified) {
             emit TokenTransferFailed(from, to, amount, TransferFailureReason.NOT_VERIFIED_SENDER);
             revert UserNotVerified();

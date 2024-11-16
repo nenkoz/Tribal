@@ -81,7 +81,7 @@ contract SoloBooking is Ownable2Step {
     address public usdcAddress;
 
     // Add state variable to track next homeId
-    uint256 private nextHomeId;
+    uint256 public nextHomeId;
 
     // Add new struct for booking details
     struct Booking {
