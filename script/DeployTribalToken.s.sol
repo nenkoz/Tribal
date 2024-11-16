@@ -3,7 +3,7 @@ pragma solidity 0.8.24;
 
 import "forge-std/Script.sol";
 import "src/TribalToken.sol";
-import "src/Bookings.sol";
+import "src/SoloBooking.sol";
 
 contract DeployTribalToken is Script {
     uint256 public constant MEMBERSHIP_FEE = 0.01 ether;
@@ -16,7 +16,7 @@ contract DeployTribalToken is Script {
         TribalToken tribalToken = new TribalToken(MEMBERSHIP_FEE, USDC_BASE);
         
         // Deploy Bookings with TribalToken address and USDC address
-        Bookings bookings = new Bookings(address(tribalToken), USDC_BASE);
+        SoloBooking bookings = new SoloBooking(address(tribalToken), USDC_BASE);
         
         vm.stopBroadcast();
         

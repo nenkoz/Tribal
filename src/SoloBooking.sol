@@ -9,7 +9,7 @@ interface ITribalToken is IERC20 {
     function transferTokens(address to, uint256 amount, ITribalTypes.PaymentType tokenType) external returns (bool);
 }
 
-contract Bookings is Ownable2Step {
+contract SoloBooking is Ownable2Step {
     error InvalidDateRange(uint256 startDate, uint256 endDate);
     error DatesNotAvailable(uint256 homeId, uint256 date);
     error HomeAlreadyRegistered();
@@ -133,7 +133,7 @@ contract Bookings is Ownable2Step {
         uint256 endDate,
         ITribalTypes.PaymentType paymentType
     ) internal {
-        HomeListing memory listing = homeListings[homeId];
+        HomeListing storage listing = homeListings[homeId];
         address owner = homeOwners[homeId];
         
         if ((paymentType == ITribalTypes.PaymentType.Tribal && !listing.acceptsTribal) || 
@@ -163,6 +163,7 @@ contract Bookings is Ownable2Step {
         bool acceptsUsdc,
         bool isFree
     ) external returns (uint256) {
+        // Validate inputs first
         _validateHomeData(contentHash, tribalPrice, usdcPrice, acceptsTribal, acceptsUsdc, isFree);
         
         uint256 homeId = nextHomeId;
@@ -209,6 +210,30 @@ contract Bookings is Ownable2Step {
         return homeId;
     }
 
+    // Separate validation function for cleaner code and reusability
+    function _validateHomeData(
+        bytes32 contentHash,
+        uint256 tribalPrice,
+        uint256 usdcPrice,
+        bool acceptsTribal,
+        bool acceptsUsdc,
+        bool isFree
+    ) internal pure {
+        if (contentHash == bytes32(0)) revert InvalidHomeData();
+        
+        // If it's free, no need to check payment methods
+        if (isFree) {
+            return;
+        }
+        
+        // Otherwise, must accept at least one payment type
+        if (!acceptsTribal && !acceptsUsdc) revert InvalidHomeData();
+        
+        // Only validate prices if accepting that token and not free
+        if (acceptsTribal && tribalPrice == 0) revert InvalidPrice("TRIBAL");
+        if (acceptsUsdc && usdcPrice == 0) revert InvalidPrice("USDC");
+    }
+
     // If you add the Tribal token update function, include event
     function updateTribalTokenAddress(
         address newAddress
@@ -245,28 +270,5 @@ contract Bookings is Ownable2Step {
                 homeAvailability[homeId].dailyStatus[date] = uint8(HomeStatus.Booked);
             } while (++date <= endDate);
         }
-    }
-
-    function _validateHomeData(
-        bytes32 contentHash,
-        uint256 tribalPrice,
-        uint256 usdcPrice,
-        bool acceptsTribal,
-        bool acceptsUsdc,
-        bool isFree
-    ) internal pure {
-        if (contentHash == bytes32(0)) revert InvalidHomeData();
-        
-        // If it's free, no need to check payment methods
-        if (isFree) {
-            return;
-        }
-        
-        // Otherwise, must accept at least one payment type
-        if (!acceptsTribal && !acceptsUsdc) revert InvalidHomeData();
-        
-        // Only validate prices if accepting that token and not free
-        if (acceptsTribal && tribalPrice == 0) revert InvalidPrice("TRIBAL");
-        if (acceptsUsdc && usdcPrice == 0) revert InvalidPrice("USDC");
     }
 }
