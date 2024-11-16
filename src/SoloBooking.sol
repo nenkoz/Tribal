@@ -29,8 +29,7 @@ contract SoloBooking is Ownable2Step {
         bool acceptsTribal;      
         bool acceptsUsdc;
         bool isFree;
-        uint8[FUTURE_DATES] dailyStatus;  // Moved from HomeAvailability
-        uint256 startDay;                 // Moved from HomeAvailability
+        uint8[FUTURE_DATES] dailyStatus;
     }
 
         // For updating existing listings
@@ -84,6 +83,24 @@ contract SoloBooking is Ownable2Step {
     // Add state variable to track next homeId
     uint256 private nextHomeId;
 
+    // Add new struct for booking details
+    struct Booking {
+        uint256 homeId;
+        uint256 startDay;
+        uint256 endDay;
+        uint256 totalAmount;
+        address paymentToken;
+        bool active;  // for potential cancellations in the future
+    }
+
+    // Add new mappings
+    mapping(address user => Booking[] bookings) public userBookings;
+    mapping(uint256 bookingId => address owner) public bookingOwner;
+    uint256 private nextBookingId;
+
+    // Add new mapping to track owner's bookings
+    mapping(address owner => Booking[] bookings) public ownerBookings;
+
     // Add constructor to set TribalToken address
     constructor(address _tribalTokenAddress, address _usdcAddress) Ownable(msg.sender) {
         tribalTokenAddress = _tribalTokenAddress;
@@ -118,11 +135,25 @@ contract SoloBooking is Ownable2Step {
 
     function book(
         uint256 homeId,
-        uint256 startDate,
-        uint256 endDate,
+        uint256 startTimestamp,
+        uint256 endTimestamp,
         ITribalToken.PaymentType paymentType
-    ) external validDateRange(startDate, endDate) datesAvailable(homeId, startDate, endDate) {
-        _processBooking(homeId, startDate, endDate, paymentType);
+    ) external {
+        uint256 startDay = startTimestamp / SECONDS_PER_DAY;
+        uint256 endDay = endTimestamp / SECONDS_PER_DAY;
+        
+        uint256 currentDay = _getCurrentDay();
+        
+        // Check if dates are valid
+        if (startDay < currentDay || endDay >= currentDay + FUTURE_DATES) {
+            revert InvalidDateRange(startDay, endDay);
+        }
+
+        // Convert to array indices
+        uint256 startIndex = startDay - currentDay;
+        uint256 endIndex = endDay - currentDay;
+        
+        _processBooking(homeId, startIndex, endIndex, paymentType);
     }
 
     // Internal function to handle booking logic
@@ -166,6 +197,21 @@ contract SoloBooking is Ownable2Step {
         emit PaymentProcessed(homeId, block.timestamp, tokenAddress, totalAmount);
         emit AvailabilityUpdatedBatch(homeId, startDate, endDate, HomeStatus.Booked);
         emit BookingConfirmed(homeId, block.timestamp);
+
+        // Store booking details
+        Booking memory newBooking = Booking({
+            homeId: homeId,
+            startDay: startDate + _getCurrentDay(),
+            endDay: endDate + _getCurrentDay(),
+            totalAmount: totalAmount,
+            paymentToken: tokenAddress,
+            active: true
+        });
+        
+        uint256 bookingId = nextBookingId++;
+        userBookings[msg.sender].push(newBooking);
+        ownerBookings[owner].push(newBooking);
+        bookingOwner[bookingId] = msg.sender;
     }
 
     // Function to register home ownership
@@ -196,7 +242,6 @@ contract SoloBooking is Ownable2Step {
             }
         }
         
-        // Create listing with all fields
         homes[homeId] = HomeListing({
             contentHash: contentHash,
             tribalPrice: tribalPrice,
@@ -205,8 +250,7 @@ contract SoloBooking is Ownable2Step {
             acceptsUsdc: acceptsUsdc,
             isFree: isFree,
             isActive: true,
-            dailyStatus: initialStatus,
-            startDay: block.timestamp / SECONDS_PER_DAY
+            dailyStatus: initialStatus
         });
         
         emit HomeListed(homeId, contentHash, block.timestamp);
@@ -333,5 +377,20 @@ contract SoloBooking is Ownable2Step {
 
     function getHomeAvailability(uint256 homeId) external view returns (uint8[FUTURE_DATES] memory) {
         return homes[homeId].dailyStatus;
+    }
+
+    // Helper function to get current day number
+    function _getCurrentDay() internal view returns (uint256) {
+        return block.timestamp / SECONDS_PER_DAY;
+    }
+
+    // Add function to get user's bookings
+    function getUserBookings(address user) external view returns (Booking[] memory) {
+        return userBookings[user];
+    }
+
+    // Add function to get owner's bookings
+    function getOwnerBookings(address owner) external view returns (Booking[] memory) {
+        return ownerBookings[owner];
     }
 }
