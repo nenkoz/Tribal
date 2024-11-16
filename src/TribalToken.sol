@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./ITribalTypes.sol";
 
 contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
     // Custom errors
@@ -50,12 +51,6 @@ contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
     // Add USDC address
     address public immutable usdcAddress;
     
-    // Add to enum
-    enum TokenType {
-        TRIBAL,
-        USDC
-    }
-
     constructor(uint256 _membershipFee, address _usdcAddress) ERC20("Tribal Community Token", "TRIBAL") Ownable(msg.sender) {
         membershipFee = _membershipFee;
         usdcAddress = _usdcAddress;
@@ -94,7 +89,7 @@ contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
     function transferTokens(
         address to,
         uint256 amount,
-        TokenType tokenType
+        ITribalTypes.PaymentType paymentType
     ) public virtual returns (bool) {
         User memory sender = users[msg.sender];
         User memory recipient = users[to];
@@ -121,10 +116,9 @@ contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
         }
 
         bool success;
-        if (tokenType == TokenType.TRIBAL) {
+        if (paymentType == ITribalTypes.PaymentType.Tribal) {
             success = super.transfer(to, amount);
         } else {
-            // Transfer USDC
             success = IERC20(usdcAddress).transferFrom(msg.sender, to, amount);
         }
 
@@ -139,7 +133,7 @@ contract TribalToken is ERC20, Ownable2Step, ReentrancyGuard {
         override 
         returns (bool) 
     {
-        return transferTokens(to, amount, TokenType.TRIBAL);
+        return transferTokens(to, amount, ITribalTypes.PaymentType.Tribal);
     }
 
     // Admin function to update membership fee
