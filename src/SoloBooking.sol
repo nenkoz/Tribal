@@ -74,6 +74,7 @@ contract SoloBooking is Ownable2Step {
         address indexed paymentToken,
         uint256 amount
     );
+    event ListingStatusUpdated(uint256 indexed homeId, bool isActive);
 
     // Add this state variable near the top with other contract state variables
     address public tribalTokenAddress;
@@ -163,30 +164,20 @@ contract SoloBooking is Ownable2Step {
         bool acceptsUsdc,
         bool isFree
     ) external returns (uint256) {
-        // Validate inputs first
         _validateHomeData(contentHash, tribalPrice, usdcPrice, acceptsTribal, acceptsUsdc, isFree);
         
         uint256 homeId = nextHomeId;
         
-        // Check if sender already owns this home
-        if (homeOwners[homeId] != address(0)) {
-            // If updating existing home, verify ownership
-            if (homeOwners[homeId] != msg.sender) {
-                revert NotHomeOwner();
-            }
-        } else {
-            // New home registration
-            allHomes.push(homeId);
-            homeOwners[homeId] = msg.sender;
-            ownerHomes[msg.sender].push(homeId);
-            
-            // Increment nextHomeId only for new registrations
-            unchecked {
-                nextHomeId++;
-            }
+        // New home registration
+        allHomes.push(homeId);
+        homeOwners[homeId] = msg.sender;
+        ownerHomes[msg.sender].push(homeId);
+        
+        unchecked {
+            nextHomeId++;
         }
         
-        // Initialize or update availability array
+        // Initialize availability array
         unchecked {
             for (uint256 i = 0; i < FUTURE_DATES; ++i) {
                 homeAvailability[homeId].dailyStatus[i] = uint8(HomeStatus.Unavailable);
@@ -194,7 +185,7 @@ contract SoloBooking is Ownable2Step {
             homeAvailability[homeId].startDay = block.timestamp / SECONDS_PER_DAY;
         }
         
-        // Create or update listing
+        // Create listing
         homeListings[homeId] = HomeListing({
             contentHash: contentHash,
             tribalPrice: tribalPrice,
@@ -206,8 +197,33 @@ contract SoloBooking is Ownable2Step {
         });
         
         emit HomeListed(homeId, contentHash, block.timestamp);
-        
         return homeId;
+    }
+
+    // For updating existing listings
+    function updateListing(
+        uint256 homeId,
+        bytes32 contentHash,
+        uint256 tribalPrice,
+        uint256 usdcPrice,
+        bool acceptsTribal,
+        bool acceptsUsdc,
+        bool isFree
+    ) external onlyHomeOwner(homeId) {
+        _validateHomeData(contentHash, tribalPrice, usdcPrice, acceptsTribal, acceptsUsdc, isFree);
+        
+        // Update listing
+        homeListings[homeId] = HomeListing({
+            contentHash: contentHash,
+            tribalPrice: tribalPrice,
+            usdcPrice: usdcPrice,
+            acceptsTribal: acceptsTribal,
+            acceptsUsdc: acceptsUsdc,
+            isFree: isFree,
+            isActive: true
+        });
+        
+        emit HomeListed(homeId, contentHash, block.timestamp);
     }
 
     // Separate validation function for cleaner code and reusability
@@ -270,5 +286,14 @@ contract SoloBooking is Ownable2Step {
                 homeAvailability[homeId].dailyStatus[date] = uint8(HomeStatus.Booked);
             } while (++date <= endDate);
         }
+    }
+
+    function getOwnerHomes(address owner) external view returns (uint256[] memory) {
+        return ownerHomes[owner];
+    }
+
+    function toggleListingStatus(uint256 homeId) external onlyHomeOwner(homeId) {
+        homeListings[homeId].isActive = !homeListings[homeId].isActive;
+        emit ListingStatusUpdated(homeId, homeListings[homeId].isActive);
     }
 }
